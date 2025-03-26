@@ -3,7 +3,6 @@ import torch
 from transformers import AutoModelForCausalLM
 from transformers import AutoProcessor 
 from scripts.utils import average_attention_heads,attention_rollout,combine_attention_matrices
-from scripts.visualize import visualize_attention_over_image, visualize_attention_over_prompt
 import argparse
 
 
