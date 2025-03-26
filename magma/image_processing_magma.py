@@ -17,7 +17,6 @@
 
 from typing import List, Optional, Union
 import ast
-import numpy as np
 import torchvision
 from transformers.image_processing_utils import BaseImageProcessor, BatchFeature
 from transformers.image_transforms import (
@@ -38,10 +37,9 @@ logger = logging.get_logger(__name__)
 
 
 if is_vision_available():
-    from PIL import Image
+    pass
 
 import torch
-import torchvision
 
 def select_best_resolution(original_size, possible_resolutions):
     """

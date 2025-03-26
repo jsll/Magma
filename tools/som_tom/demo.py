@@ -1,18 +1,13 @@
-import os
-import json
 import cv2
-import csv
-import io
 import numpy as np
 from PIL import Image
-from tqdm import tqdm
 
 import torch
 import torchvision
 
 from cotracker.utils.visualizer import Visualizer
 from data.utils.visual_trace import visual_trace
-from data.utils.som_tom import som_prompting, tom_prompting
+from data.utils.som_tom import som_prompting
 
 device = 'cuda'
 grid_size = 15
@@ -44,13 +39,13 @@ def som_tom(video, pred_tracks, pred_visibility, item={}, epsilon=2):
                 future_pts_np = future_pts.cpu().numpy().reshape(-1, 2)
                 try:
                     (H, status) = cv2.findHomography(future_pts_np, reference_pts_np, cv2.RANSAC, 4.0)
-                except Exception as e:
+                except Exception:
                     continue
                 future_pts_np_transformed = cv2.perspectiveTransform(future_pts_np.reshape(1, -1, 2), H).reshape(-1, 2)                                
                 future_pts_transformed_k = torch.tensor(future_pts_np_transformed, dtype=torch.float32)
                 future_pts_transformed.append(future_pts_transformed_k)            
             pred_tracks = torch.stack([start_pos] + future_pts_transformed, dim=0).unsqueeze(0)           
-        except Exception as e:
+        except Exception:
             pass
     
     # Alg2 L5: Find the positive traces and negative traces
@@ -80,7 +75,7 @@ def som_tom(video, pred_tracks, pred_visibility, item={}, epsilon=2):
     # visualize the traces
     images = [image] * pos_tracks.shape[1]
     video = torch.stack([torchvision.transforms.ToTensor()(img) for img in images])[None].float()*255    
-    _ = vis.visualize(video, pos_tracks, pos_visibility, filename=f"som_tom")
+    _ = vis.visualize(video, pos_tracks, pos_visibility, filename="som_tom")
 
 video_path = "assets/videos/tom_orig_sample.mp4"
 # load video

@@ -1,5 +1,3 @@
-import os
-import uuid
 import warnings
 from typing import List, Optional, Tuple, Union
 
@@ -10,11 +8,9 @@ import PIL
 from torchvision.transforms.functional import to_pil_image
 from decord import VideoReader, cpu
 import numpy as np
-from lmms_eval import utils
 from lmms_eval.api.instance import Instance
 from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
-from lmms_eval.models.model_utils.qwen.qwen_generate_utils import make_context
 
 warnings.simplefilter("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore")

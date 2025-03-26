@@ -1,8 +1,7 @@
 import os
-import numpy as np
 import draccus
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Tuple
 import tqdm
 from libero.libero import benchmark
 from libero_env_utils import (

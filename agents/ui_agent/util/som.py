@@ -1,11 +1,7 @@
-import torch
-from ultralytics import YOLO
 from PIL import Image
-import io
-import base64
 device = 'cuda'
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageDraw, ImageFont
 import numpy as np
 import networkx as nx
 # import cv2

@@ -1,13 +1,6 @@
 import torch
-import torchvision
-from torch.utils.data import DataLoader
 import os
-import sys
 import argparse
-from typing import Dict, Optional, Sequence, List
-from dataclasses import dataclass, field
-import clip
-import multiprocessing as mp
 from dataloader import *
 import threading
 import json

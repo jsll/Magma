@@ -1,8 +1,6 @@
 import gradio as gr
-import numpy as np
 import gymnasium as gym
 from PIL import Image
-import matplotlib.pyplot as plt
 
 # Initialize FrozenLake environment
 env = gym.make("FrozenLake-v1", render_mode="rgb_array")

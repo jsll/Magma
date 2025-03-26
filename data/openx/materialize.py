@@ -6,8 +6,8 @@ exports individual functions for clear control flow.
 """
 
 from pathlib import Path
-from typing import Tuple, Type, Dict, Sequence
-from dataclasses import dataclass, field
+from typing import Tuple, Dict, Sequence
+from dataclasses import dataclass
 
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase

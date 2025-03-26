@@ -2,14 +2,10 @@ import torch
 import torchvision
 import re
 import cv2
-import numpy as np
 import os
-import yaml
 from PIL import Image
 from data.utils.visual_trace import visual_trace
-from data.utils.som_tom import som_prompting, tom_prompting
-import torchvision.io as tv_io
-import torchvision
+from data.utils.som_tom import som_prompting
 import time
 import random
 from decord import VideoReader, cpu
@@ -68,7 +64,7 @@ class Constructor():
                 # convert image to rgb format                
                 image = Image.fromarray(image).resize(size)                                               
                 return image     
-            except Exception as e:
+            except Exception:
                 print(f"Failed to read video {video_path} at frame {frame_start + frame_pos}")
                 return None    
     
@@ -192,7 +188,7 @@ class Constructor():
             return item
 
         if 'image_size' not in item:
-            assert '(height,width)' in item, f"image_size not in item and (height,width) not in item"
+            assert '(height,width)' in item, "image_size not in item and (height,width) not in item"
             item['image_size'] = item['(height,width)'][::-1]            
         
         if isinstance(item['image_size'][0], torch.Tensor):
@@ -309,13 +305,13 @@ class Constructor():
                     future_pts_np = future_pts.cpu().numpy().reshape(-1, 2)
                     try:
                         (H, status) = cv2.findHomography(future_pts_np, reference_pts_np, cv2.RANSAC, 4.0)
-                    except Exception as e:
+                    except Exception:
                         continue
                     future_pts_np_transformed = cv2.perspectiveTransform(future_pts_np.reshape(1, -1, 2), H).reshape(-1, 2)                                
                     future_pts_transformed_k = torch.tensor(future_pts_np_transformed, dtype=torch.float32)
                     future_pts_transformed.append(future_pts_transformed_k)            
                 pred_tracks = torch.stack([start_pos] + future_pts_transformed, dim=0).unsqueeze(0)           
-            except Exception as e:
+            except Exception:
                 pass
             
             if pred_tracks_history.size(1) > 0:
@@ -326,13 +322,13 @@ class Constructor():
                         history_pts_np = history_pts.cpu().numpy().reshape(-1, 2)
                         try:
                             (H, status) = cv2.findHomography(history_pts_np, reference_pts_np, cv2.RANSAC, 4.0)
-                        except Exception as e:
+                        except Exception:
                             continue
                         history_pts_np_transformed = cv2.perspectiveTransform(history_pts_np.reshape(1, -1, 2), H).reshape(-1, 2)                                
                         history_pts_transformed_k = torch.tensor(history_pts_np_transformed, dtype=torch.float32)
                         history_pts_transformed.append(history_pts_transformed_k)            
                     pred_tracks_history = torch.stack(history_pts_transformed, dim=0).unsqueeze(0)   
-                except Exception as e:
+                except Exception:
                     pass
         
         # step 2: find positive traces and negative traces
@@ -533,7 +529,7 @@ class Constructor():
             size = (size[0]//2, size[1]//2)             
             images = [Image.fromarray(image).resize(size) for image in images]                                      
             return images
-        except Exception as e:
+        except Exception:
             print(f"Failed to read frames from video {video_path}")
             return None    
   
@@ -563,7 +559,7 @@ class Constructor():
             # size = (size[0]//2, size[1]//2)             
             images = [Image.fromarray(image).resize(size) for image in images]                                      
             return images
-        except Exception as e:
+        except Exception:
             print(f"Failed to read frames from video {video_path}")
             return None   
 
@@ -580,7 +576,7 @@ class Constructor():
             return item
         
         if 'image_size' not in item:
-            assert '(height,width)' in item, f"image_size not in item and (height,width) not in item"
+            assert '(height,width)' in item, "image_size not in item and (height,width) not in item"
             item['image_size'] = item['(height,width)'][::-1]            
         
         if isinstance(item['image_size'][0], torch.Tensor):

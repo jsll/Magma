@@ -2,11 +2,7 @@ import torch
 import json
 import cv2
 import os
-import sys
-import csv
-import pickle
 import argparse
-import random
 import numpy as np
 import multiprocessing as mp
 import imageio

@@ -15,19 +15,13 @@
 #    limitations under the License.
 
 import os
-import copy
 from dataclasses import dataclass, field
 import json
 import logging
 import pathlib
-from typing import Dict, Optional, Sequence, List
+from typing import Dict, Optional, Sequence
 import torch
-import deepspeed
-import glob
 import transformers
-import tokenizers
-import random
-import re
 
 from magma.image_processing_magma import MagmaImageProcessor
 from magma.processing_magma import MagmaProcessor
@@ -35,9 +29,6 @@ from magma.modeling_magma import MagmaForCausalLM
 from magma.configuration_magma import MagmaConfig
 from transformers import (
     AutoModelForCausalLM,
-    AutoProcessor,
-    BitsAndBytesConfig,
-    Trainer,
     TrainingArguments,    
 )
 from transformers import AutoTokenizer, AutoConfig
@@ -52,7 +43,6 @@ def rank0_print(*args):
     if local_rank == 0:
         print(*args)
 
-from packaging import version
 
 @dataclass
 class ModelArguments:
@@ -237,7 +227,7 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
                 os.makedirs(mm_projector_folder, exist_ok=True)
                 torch.save(weight_to_save, os.path.join(mm_projector_folder, f'{current_folder}.bin'))
             else:
-                torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
+                torch.save(weight_to_save, os.path.join(output_dir, 'mm_projector.bin'))
         return
 
     if trainer.deepspeed:

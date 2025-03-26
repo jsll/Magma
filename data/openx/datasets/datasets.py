@@ -7,18 +7,14 @@ format to OpenVLA, IterableDataset shim.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Tuple, Type
+from typing import Any, Dict, Tuple
 import collections
-import os
 import numpy as np
-import cv2
 import torch
 from PIL import Image
-import torchvision
 from torchvision.transforms import transforms
 from torch.utils.data import Dataset, IterableDataset
 from transformers import PreTrainedTokenizerBase
-from data.utils.som_tom import som_prompting, tom_prompting
 
 # from prismatic.models.backbones.llm.prompting import PromptBuilder
 # from prismatic.models.backbones.vision import ImageTransform
@@ -29,7 +25,7 @@ from .rlds.utils.data_utils import NormalizationType
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
-from typing import Callable, Dict, Sequence, Tuple
+from typing import Callable, Sequence
 
 def tree_map(fn: Callable, tree: dict) -> dict:
     """Maps a function over a nested dictionary."""

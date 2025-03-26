@@ -20,8 +20,8 @@
 """Magma model configuration"""
 
 from transformers.configuration_utils import PretrainedConfig
-from transformers.utils import logging
 from transformers.models.auto import CONFIG_MAPPING
+from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
@@ -119,11 +119,13 @@ class MagmaConfig(PretrainedConfig):
         tie_word_embeddings=False,
         **kwargs,
     ):
-        self.vision_config = vision_config      
+        self.vision_config = vision_config
         self.image_token_index = image_token_index
 
         if isinstance(text_config, dict):
-            text_config["model_type"] = text_config["model_type"] if "model_type" in text_config else "llama"
+            text_config["model_type"] = (
+                text_config["model_type"] if "model_type" in text_config else "llama"
+            )
             text_config = CONFIG_MAPPING[text_config["model_type"]](**text_config)
         elif text_config is None:
             if "model_type" in kwargs:

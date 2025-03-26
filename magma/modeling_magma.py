@@ -14,37 +14,35 @@
 # limitations under the License.
 """PyTorch Magma model."""
 
-import math
-import re
 import os
+import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-import numpy as np
 import torch
-import torch.utils.checkpoint
-from torch import nn
-import wandb
 import torch.distributed as dist
+import torch.utils.checkpoint
+import wandb
+from torch import nn
+from transformers import AutoConfig, AutoModelForCausalLM
+from transformers.cache_utils import Cache
 from transformers.modeling_utils import PreTrainedModel
-from transformers.activations import ACT2FN
-from transformers.cache_utils import Cache, DynamicCache
-from transformers.utils import ModelOutput
 from transformers.utils import (
-    add_code_sample_docstrings,
+    ModelOutput,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
     logging,
     replace_return_docstrings,
 )
-from transformers import AutoConfig, AutoModelForCausalLM
+
 from .configuration_magma import MagmaConfig
 from .image_tower_magma import MagmaImageTower
 
 logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "MagmaConfig"
-    
+
+
 @dataclass
 # Copied from transformers.models.idefics.modeling_idefics.IdeficsCausalLMOutputWithPast with Idefics->Magma
 class MagmaCausalLMOutputWithPast(ModelOutput):
@@ -92,25 +90,27 @@ class MagmaMultiModalProjector(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        
-        dim_vision = {'base': 640, 'large': 768, 'xxlarge': 1024}
-        vision_backbone = config.get('vision_backbone', 'convnextxxlarge')
-        vision_backbone_size = vision_backbone.replace('convnext', '')
-        projector_type = config.get('mm_projector_type', 'linear')
-        mlp_gelu_match = re.match(r'^mlp(\d+)x_gelu$', projector_type)
+
+        dim_vision = {"base": 640, "large": 768, "xxlarge": 1024}
+        vision_backbone = config.get("vision_backbone", "convnextxxlarge")
+        vision_backbone_size = vision_backbone.replace("convnext", "")
+        projector_type = config.get("mm_projector_type", "linear")
+        mlp_gelu_match = re.match(r"^mlp(\d+)x_gelu$", projector_type)
         if mlp_gelu_match:
             mlp_depth = int(mlp_gelu_match.group(1))
-            modules = [nn.Linear(config['mm_hidden_size'], config['hidden_size'])]
+            modules = [nn.Linear(config["mm_hidden_size"], config["hidden_size"])]
             for _ in range(1, mlp_depth):
                 modules.append(nn.GELU())
-                modules.append(nn.Linear(config['hidden_size'], config['hidden_size']))
+                modules.append(nn.Linear(config["hidden_size"], config["hidden_size"]))
             self.proj = nn.Sequential(*modules)
 
         # define a row seperator
-        self.row_seperator = nn.Parameter(torch.zeros(1, 1, config['hidden_size']))
-        if config.get('mm_use_im_start_end', False):
-            self.img_start_seperator = nn.Parameter(torch.zeros(1, config['hidden_size']))
-            self.img_end_seperator = nn.Parameter(torch.zeros(1, config['hidden_size']))                        
+        self.row_seperator = nn.Parameter(torch.zeros(1, 1, config["hidden_size"]))
+        if config.get("mm_use_im_start_end", False):
+            self.img_start_seperator = nn.Parameter(
+                torch.zeros(1, config["hidden_size"])
+            )
+            self.img_end_seperator = nn.Parameter(torch.zeros(1, config["hidden_size"]))
 
     def forward(self, x):
         return self.proj(x)
@@ -137,7 +137,6 @@ MAGMA_START_DOCSTRING = r"""
     "The bare LLaMA Model outputting raw hidden-states without any specific head on top.",
     MAGMA_START_DOCSTRING,
 )
-
 class MagmaPreTrainedModel(PreTrainedModel):
     config_class = MagmaConfig
     base_model_prefix = "model"
@@ -247,6 +246,7 @@ MAGMA_INPUTS_DOCSTRING = r"""
             Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
 """
 
+
 @add_start_docstrings(
     """The Magma model which consists of a vision backbone and a language model.""",
     MAGMA_START_DOCSTRING,
@@ -255,41 +255,51 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
     def __init__(self, config: MagmaConfig):
         super().__init__(config)
 
-        self.vision_tower = MagmaImageTower(config.vision_config, require_pretrained=False)
-        config.vision_config['mm_hidden_size'] = config.vision_config['mm_hidden_size'] \
-            if 'mm_hidden_size' in config.vision_config else self.vision_tower.hidden_size
-        config.vision_config['hidden_size'] = config.vision_config['hidden_size'] \
-            if 'hidden_size' in config.vision_config else self.config.text_config.hidden_size
+        self.vision_tower = MagmaImageTower(
+            config.vision_config, require_pretrained=False
+        )
+        config.vision_config["mm_hidden_size"] = (
+            config.vision_config["mm_hidden_size"]
+            if "mm_hidden_size" in config.vision_config
+            else self.vision_tower.hidden_size
+        )
+        config.vision_config["hidden_size"] = (
+            config.vision_config["hidden_size"]
+            if "hidden_size" in config.vision_config
+            else self.config.text_config.hidden_size
+        )
         self.multi_modal_projector = MagmaMultiModalProjector(config.vision_config)
 
         self.vocab_size = config.text_config.vocab_size
-        if hasattr(config.text_config, 'auto_map'):
+        if hasattr(config.text_config, "auto_map"):
             del config.text_config.auto_map
 
         try:
             self.language_model = AutoModelForCausalLM.from_config(
-                config.text_config, 
-                # attn_implementation=config._attn_implementation, 
-                trust_remote_code=True
+                config.text_config,
+                # attn_implementation=config._attn_implementation,
+                trust_remote_code=True,
             )
         except:
             self.language_model = AutoModelForCausalLM.from_pretrained(
-                config.text_config._name_or_path, 
-                # attn_implementation=config._attn_implementation, 
-                trust_remote_code=True
+                config.text_config._name_or_path,
+                # attn_implementation=config._attn_implementation,
+                trust_remote_code=True,
             )
-        
-        self.pad_token_id = self.config.pad_token_id if self.config.pad_token_id is not None else -1
+
+        self.pad_token_id = (
+            self.config.pad_token_id if self.config.pad_token_id is not None else -1
+        )
         self._padding_side = "left"  # set it to left by default, user can use setter to change padding_sides
 
         try:
             if dist.get_rank() == 0:
-                wandb.init(project=os.environ['WANDB_PROJECT'])
+                wandb.init(project=os.environ["WANDB_PROJECT"])
         except:
             pass
 
         self.post_init()
-    
+
     # def from_pretrained(self, pretrained_model_name_or_path, *model_args, **kwargs):
     #     import pdb; pdb.set_trace()
     #     kwargs["_from_auto"] = True
@@ -327,7 +337,6 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
         return self.language_model.tie_weights()
 
     def load_special_module_from_ckpt(self, ckpt_path, torch_dtype=None):
-        from deepspeed.runtime.zero import Init
         from deepspeed import zero
         # Defer initialization for ZeRO-3 compatibility
         # with Init(data_parallel_group=None):
@@ -335,8 +344,10 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
         #     self.vision_tower = MagmaImageTower(self.config.vision_config, require_pretrained=False)
 
         # Load checkpoint weights into the special module
-        checkpoint = torch.load(ckpt_path, map_location='cpu')
-        state_dict = {k.replace('visual.', ''): v for k, v in checkpoint.items() if 'visual.' in k}
+        checkpoint = torch.load(ckpt_path, map_location="cpu")
+        state_dict = {
+            k.replace("visual.", ""): v for k, v in checkpoint.items() if "visual." in k
+        }
 
         # Convert checkpoint weights to match model's parameter dtype
         if torch_dtype is None:
@@ -348,9 +359,13 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
                 state_dict[k] = v.to(torch_dtype)
 
         # Temporarily gather parameters for loading (if ZeRO-3 is active)
-        with zero.GatheredParameters(list(self.vision_tower.parameters()), modifier_rank=0):
+        with zero.GatheredParameters(
+            list(self.vision_tower.parameters()), modifier_rank=0
+        ):
             # Load the state dictionary
-            self.vision_tower.clip_vision_model.load_state_dict(state_dict, strict=False)
+            self.vision_tower.clip_vision_model.load_state_dict(
+                state_dict, strict=False
+            )
             # After loading, ensure the module is on the correct device
             for param in self.vision_tower.parameters():
                 param.data = param.data.to(self.device).to(torch_dtype)
@@ -359,9 +374,13 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
         # If using a DeepSpeed engine, attach the updated module
         if hasattr(self, "deepspeed_engine"):
             self.deepspeed_engine.module = self
-        
-    def resize_token_embeddings(self, new_num_tokens: Optional[int] = None, pad_to_multiple_of=None) -> nn.Embedding:
-        model_embeds = self.language_model.resize_token_embeddings(new_num_tokens, pad_to_multiple_of)
+
+    def resize_token_embeddings(
+        self, new_num_tokens: Optional[int] = None, pad_to_multiple_of=None
+    ) -> nn.Embedding:
+        model_embeds = self.language_model.resize_token_embeddings(
+            new_num_tokens, pad_to_multiple_of
+        )
         # update vocab size
         self.config.text_config.vocab_size = model_embeds.num_embeddings
         self.vocab_size = model_embeds.num_embeddings
@@ -457,14 +476,22 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
                         i j Y Y Y Y Y k l m n
                     ]
         """
-        image_token_index = image_token_index if image_token_index is not None else self.config.image_token_index
-        ignore_index = ignore_index if ignore_index is not None else self.config.ignore_index
+        image_token_index = (
+            image_token_index
+            if image_token_index is not None
+            else self.config.image_token_index
+        )
+        ignore_index = (
+            ignore_index if ignore_index is not None else self.config.ignore_index
+        )
 
         with torch.no_grad():
             num_images = feature_lens.size(0)
             num_image_features, embed_dim = image_features.shape
             if feature_lens.sum() != num_image_features:
-                raise ValueError(f"{feature_lens=} / {feature_lens.sum()} != {image_features.shape=}")
+                raise ValueError(
+                    f"{feature_lens=} / {feature_lens.sum()} != {image_features.shape=}"
+                )
             batch_size = input_ids.shape[0]
             _left_padding = torch.any(attention_mask[:, 0] == 0)
             _right_padding = torch.any(attention_mask[:, -1] == 0)
@@ -480,7 +507,9 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
                     left_padding = self.padding_side == "left"
                 else:
                     # invalid attention_mask
-                    raise ValueError(f"both side of attention_mask has zero, invalid. {attention_mask}")
+                    raise ValueError(
+                        f"both side of attention_mask has zero, invalid. {attention_mask}"
+                    )
 
             # Whether to turn off right padding
             # 1. Create a mask to know where special image tokens are
@@ -496,14 +525,22 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
                 )
             # Compute the maximum embed dimension
             # max_image_feature_lens is max_feature_lens per batch
-            feature_lens_batch = feature_lens.split(num_special_image_tokens.tolist(), dim=0)
-            feature_lens_batch_sum = torch.tensor([x.sum() for x in feature_lens_batch], device=feature_lens.device)
+            feature_lens_batch = feature_lens.split(
+                num_special_image_tokens.tolist(), dim=0
+            )
+            feature_lens_batch_sum = torch.tensor(
+                [x.sum() for x in feature_lens_batch], device=feature_lens.device
+            )
             embed_sequence_lengths = (
-                (attention_mask == 1).long().sum(-1) - num_special_image_tokens + feature_lens_batch_sum
+                (attention_mask == 1).long().sum(-1)
+                - num_special_image_tokens
+                + feature_lens_batch_sum
             )
             max_embed_dim = embed_sequence_lengths.max()
 
-            batch_indices, non_image_indices = torch.where((input_ids != image_token_index) & (attention_mask == 1))
+            batch_indices, non_image_indices = torch.where(
+                (input_ids != image_token_index) & (attention_mask == 1)
+            )
             # 2. Compute the positions where text should be written
             # Calculate new positions for text tokens in merged image-text sequence.
             # `special_image_token_mask` identifies image tokens. Each image token will be replaced by `nb_text_tokens_per_images` text tokens.
@@ -523,15 +560,24 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
 
         # 3. Create the full embedding, already padded to the maximum position
         final_embedding = torch.zeros(
-            batch_size, max_embed_dim, embed_dim, dtype=inputs_embeds.dtype, device=inputs_embeds.device
+            batch_size,
+            max_embed_dim,
+            embed_dim,
+            dtype=inputs_embeds.dtype,
+            device=inputs_embeds.device,
         )
         final_attention_mask = torch.zeros(
-            batch_size, max_embed_dim, dtype=attention_mask.dtype, device=inputs_embeds.device
+            batch_size,
+            max_embed_dim,
+            dtype=attention_mask.dtype,
+            device=inputs_embeds.device,
         )
         final_labels = None
         if labels is not None:
             # NOTE: this is a bug in the original code!!!
-            final_labels = torch.full_like(final_attention_mask.long(), ignore_index).to(torch.long)
+            final_labels = torch.full_like(
+                final_attention_mask.long(), ignore_index
+            ).to(torch.long)
         # In case the Vision model or the Language model has been offloaded to CPU, we need to manually
         # set the corresponding tensors into their correct target device.
         target_device = inputs_embeds.device
@@ -544,15 +590,24 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
 
         # 4. Fill the embeddings based on the mask. If we have ["hey" "<image>", "how", "are"]
         # we need to index copy on [0, 577, 578, 579] for the text and [1:576] for the image features
-        final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[batch_indices, non_image_indices]
-        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[batch_indices, non_image_indices]
+        final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[
+            batch_indices, non_image_indices
+        ]
+        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[
+            batch_indices, non_image_indices
+        ]
         if labels is not None:
-            final_labels[batch_indices, text_to_overwrite] = labels[batch_indices, non_image_indices]
+            final_labels[batch_indices, text_to_overwrite] = labels[
+                batch_indices, non_image_indices
+            ]
 
         # 5. Fill the embeddings corresponding to the images. Anything that is not `text_positions` needs filling (#29835)
         with torch.no_grad():
             image_to_overwrite = torch.full(
-                (batch_size, max_embed_dim), True, dtype=torch.bool, device=inputs_embeds.device
+                (batch_size, max_embed_dim),
+                True,
+                dtype=torch.bool,
+                device=inputs_embeds.device,
             )
             image_to_overwrite[batch_indices, text_to_overwrite] = False
             embed_indices = torch.arange(max_embed_dim).unsqueeze(0).to(target_device)
@@ -574,19 +629,29 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
                     f" the number of image given to the model is {num_images}. "
                     f"This prevents correct indexing and breaks batch generation."
                 )
-        final_embedding[image_to_overwrite] = image_features.contiguous().reshape(-1, embed_dim).to(target_device)
+        final_embedding[image_to_overwrite] = (
+            image_features.contiguous().reshape(-1, embed_dim).to(target_device)
+        )
         final_attention_mask |= image_to_overwrite
-        position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_((final_attention_mask == 0), 1)
+        position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_(
+            (final_attention_mask == 0), 1
+        )
 
         return final_embedding, final_attention_mask, position_ids, final_labels
 
     @add_start_docstrings_to_model_forward(MAGMA_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=MagmaCausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
+    @replace_return_docstrings(
+        output_type=MagmaCausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC
+    )
     def forward(
         self,
         input_ids: torch.LongTensor = None,
-        pixel_values: Union[torch.FloatTensor, List[torch.FloatTensor], List[List[torch.FloatTensor]]] = None,
-        image_sizes: Union[torch.LongTensor, List[torch.LongTensor], List[List[torch.LongTensor]]] = None,
+        pixel_values: Union[
+            torch.FloatTensor, List[torch.FloatTensor], List[List[torch.FloatTensor]]
+        ] = None,
+        image_sizes: Union[
+            torch.LongTensor, List[torch.LongTensor], List[List[torch.LongTensor]]
+        ] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -629,17 +694,27 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
         >>> processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "[INST]  \nWhat is shown in this image? [/INST] The image appears to be a radar chart, which is a type of multi-dimensional plot (...)"
         ```"""
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_attentions = (
+            output_attentions
+            if output_attentions is not None
+            else self.config.output_attentions
+        )
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
         vision_feature_layer = (
-            vision_feature_layer if vision_feature_layer is not None else self.config.vision_config['vision_feature_layer']
+            vision_feature_layer
+            if vision_feature_layer is not None
+            else self.config.vision_config["vision_feature_layer"]
         )
-        
+
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        
+
         if inputs_embeds is None:
             # 1. Extract the input embeddings
             # In case image_token_index is not in the embeddings (extra token but embedding don't have it)
@@ -648,7 +723,11 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
             inputs_embeds = self.get_input_embeddings()(for_inputs_embeds_ids)
 
             # 2. Merge text and images
-            if pixel_values is not None and input_ids.shape[1] != 1 and len(pixel_values) > 0:
+            if (
+                pixel_values is not None
+                and input_ids.shape[1] != 1
+                and len(pixel_values) > 0
+            ):
                 # ! infer image_num_patches from image_sizes
                 if type(pixel_values) == list:
                     # nested list of pixel_values, each element is a list of pixel_values for each training instance, it could be multiple for video or interleaved setting
@@ -657,85 +736,167 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
                     pixels_values_list = sum(pixel_values, [])
                     image_sizes_list = sum(image_sizes, [])
                 else:
-                    image_num_patches = [(imsize[imsize.sum(1) > 0,0] * imsize[imsize.sum(1) > 0,1]).tolist() for imsize in image_sizes]       
-                    # image_num_patches = [(imsize[:,0]*imsize[:,1]).tolist() for imsize in image_sizes]             
+                    image_num_patches = [
+                        (
+                            imsize[imsize.sum(1) > 0, 0] * imsize[imsize.sum(1) > 0, 1]
+                        ).tolist()
+                        for imsize in image_sizes
+                    ]
+                    # image_num_patches = [(imsize[:,0]*imsize[:,1]).tolist() for imsize in image_sizes]
                     # figure out if pixel_values is concatenated or stacked
                     if pixel_values.dim() == 5:
                         # stacking when input is (batch_size, num_patches, num_channels, height, width)
                         _pixel_values_list = [
-                            pix_val[:sum(num_patch)].split(num_patch, dim=0) for pix_val, num_patch in zip(pixel_values, image_num_patches)
+                            pix_val[: sum(num_patch)].split(num_patch, dim=0)
+                            for pix_val, num_patch in zip(
+                                pixel_values, image_num_patches
+                            )
                         ]
-                        _image_sizes_list = [image_size[image_size.sum(-1) > 0].tolist() for image_size in image_sizes]
+                        _image_sizes_list = [
+                            image_size[image_size.sum(-1) > 0].tolist()
+                            for image_size in image_sizes
+                        ]
                     elif pixel_values.dim() != 4:
                         # otherwise has to be stacked from list of (num_patches, num_channels, height, width)
-                        raise ValueError(f"pixel_values of shape {pixel_values.shape}, expect to be of 4 or 5 dimensions")
+                        raise ValueError(
+                            f"pixel_values of shape {pixel_values.shape}, expect to be of 4 or 5 dimensions"
+                        )
 
-                if self.config.vision_config['img_anyres_strategy'] == "global":
+                if self.config.vision_config["img_anyres_strategy"] == "global":
                     selected_image_features = []
                     # NOTE: both _image_sizes_list and _pixel_values_list are lists of lists, each item represents an training instance with one or multiple images
-                    for idx, (image_size_for_instance, pixel_values_for_instance) in enumerate(zip(_image_sizes_list, _pixel_values_list)):
-                        assert len(image_size_for_instance) == len(pixel_values_for_instance), f"{len(image_size_for_instance)} != {len(pixel_values_for_instance)}"
-                        for image_size, pixel_values_for_image in zip(image_size_for_instance, pixel_values_for_instance):
-                            pixel_values_for_image = pixel_values_for_image.view(image_size[0], image_size[1], *pixel_values_for_image.shape[1:])
-                            pixel_values_for_image = pixel_values_for_image.permute(2, 0, 3, 1, 4).flatten(3, 4).flatten(1, 2).unsqueeze(0)
+                    for idx, (
+                        image_size_for_instance,
+                        pixel_values_for_instance,
+                    ) in enumerate(zip(_image_sizes_list, _pixel_values_list)):
+                        assert len(image_size_for_instance) == len(
+                            pixel_values_for_instance
+                        ), (
+                            f"{len(image_size_for_instance)} != {len(pixel_values_for_instance)}"
+                        )
+                        for image_size, pixel_values_for_image in zip(
+                            image_size_for_instance, pixel_values_for_instance
+                        ):
+                            pixel_values_for_image = pixel_values_for_image.view(
+                                image_size[0],
+                                image_size[1],
+                                *pixel_values_for_image.shape[1:],
+                            )
+                            pixel_values_for_image = (
+                                pixel_values_for_image.permute(2, 0, 3, 1, 4)
+                                .flatten(3, 4)
+                                .flatten(1, 2)
+                                .unsqueeze(0)
+                            )
                             image_features = self.vision_tower(pixel_values_for_image)
-                            selected_image_feature = image_features[vision_feature_layer][0].permute(1, 2, 0)
-                            selected_image_feature = self.multi_modal_projector(selected_image_feature)
-                            selected_image_feature = torch.cat((selected_image_feature, self.multi_modal_projector.row_seperator.repeat(selected_image_feature.shape[0],1,1)), dim=1)
-                            selected_image_features.append(selected_image_feature.flatten(0, 1))
-                elif self.config.vision_config['img_anyres_strategy'] == "crop":
+                            selected_image_feature = image_features[
+                                vision_feature_layer
+                            ][0].permute(1, 2, 0)
+                            selected_image_feature = self.multi_modal_projector(
+                                selected_image_feature
+                            )
+                            selected_image_feature = torch.cat(
+                                (
+                                    selected_image_feature,
+                                    self.multi_modal_projector.row_seperator.repeat(
+                                        selected_image_feature.shape[0], 1, 1
+                                    ),
+                                ),
+                                dim=1,
+                            )
+                            selected_image_features.append(
+                                selected_image_feature.flatten(0, 1)
+                            )
+                elif self.config.vision_config["img_anyres_strategy"] == "crop":
                     # calculate number of crops for each instance in the batch given _image_sizes_list
                     _image_sizes_list_temp = sum(_image_sizes_list, [])
                     # concate nate all images in _pixel_values_list
                     _pixel_values_list_temp = sum(_pixel_values_list, ())
                     _pixel_values_list_temp = torch.cat(_pixel_values_list_temp, dim=0)
-                    image_features = self.vision_tower(_pixel_values_list_temp)[vision_feature_layer].permute(0, 2, 3, 1)
+                    image_features = self.vision_tower(_pixel_values_list_temp)[
+                        vision_feature_layer
+                    ].permute(0, 2, 3, 1)
                     image_features = self.multi_modal_projector(image_features)
 
-                    num_crops_list = [_image_size[0]*_image_size[1] for _image_size in _image_sizes_list_temp]
-                    image_features_split = torch.split(image_features, num_crops_list, dim=0)
+                    num_crops_list = [
+                        _image_size[0] * _image_size[1]
+                        for _image_size in _image_sizes_list_temp
+                    ]
+                    image_features_split = torch.split(
+                        image_features, num_crops_list, dim=0
+                    )
                     selected_image_features = []
-                    for image_feature, image_size in zip(image_features_split, _image_sizes_list_temp):
-                        image_feature = image_feature.view(image_size[0], image_size[1], *image_feature.shape[1:])
-                        image_feature = image_feature.permute(0, 2, 1, 3, 4).flatten(2, 3).flatten(0, 1)
-                        image_feature = torch.cat((image_feature, self.multi_modal_projector.row_seperator.repeat(image_feature.shape[0],1,1)), dim=1)
+                    for image_feature, image_size in zip(
+                        image_features_split, _image_sizes_list_temp
+                    ):
+                        image_feature = image_feature.view(
+                            image_size[0], image_size[1], *image_feature.shape[1:]
+                        )
+                        image_feature = (
+                            image_feature.permute(0, 2, 1, 3, 4)
+                            .flatten(2, 3)
+                            .flatten(0, 1)
+                        )
+                        image_feature = torch.cat(
+                            (
+                                image_feature,
+                                self.multi_modal_projector.row_seperator.repeat(
+                                    image_feature.shape[0], 1, 1
+                                ),
+                            ),
+                            dim=1,
+                        )
                         selected_image_features.append(image_feature.flatten(0, 1))
 
                     # raise NotImplementedError("crop strategy is not implemented yet")
                     # image_features = self.vision_tower(pixel_values)
-                    # selected_image_feature = image_features[vision_feature_layer]            
+                    # selected_image_feature = image_features[vision_feature_layer]
                     # image_features = torch.split(image_features, image_num_patches, dim=0)
 
                 # NOTE we only support multimodal_patch_merge_type == "spatial_unpad"
-                feature_lens = [elem.shape[0] for elem in selected_image_features]        
+                feature_lens = [elem.shape[0] for elem in selected_image_features]
                 image_features = torch.cat(selected_image_features, 0)
-                feature_lens = torch.tensor(feature_lens, dtype=torch.long, device=image_features.device)
-                
+                feature_lens = torch.tensor(
+                    feature_lens, dtype=torch.long, device=image_features.device
+                )
+
                 # inputs_embeds = inputs_embeds.to(image_features.dtype)
-                inputs_embeds, attention_mask, position_ids, labels = self._merge_input_ids_with_image_features(
-                    image_features,
-                    feature_lens,
-                    inputs_embeds,
-                    input_ids,
-                    attention_mask,
-                    position_ids,
-                    labels=labels,
+                inputs_embeds, attention_mask, position_ids, labels = (
+                    self._merge_input_ids_with_image_features(
+                        image_features,
+                        feature_lens,
+                        inputs_embeds,
+                        input_ids,
+                        attention_mask,
+                        position_ids,
+                        labels=labels,
+                    )
                 )
 
             # pixel_values is not None but is empty ---> text only cases
-            elif pixel_values is not None and input_ids.shape[1] != 1 and pixel_values.size(0) == 0:
+            elif (
+                pixel_values is not None
+                and input_ids.shape[1] != 1
+                and pixel_values.size(0) == 0
+            ):
                 # there are no images
                 pass
 
             # In case input_ids.shape[1] == 1 & pixel_values==None & past_key_values != None, we are in the case of
             # generation with cache
-            elif past_key_values is not None and pixel_values is not None and input_ids.shape[1] == 1:
+            elif (
+                past_key_values is not None
+                and pixel_values is not None
+                and input_ids.shape[1] == 1
+            ):
                 # Retrieve the first layer to inspect the logits and mask out the hidden states
                 # that are set to 0
                 first_layer_past_key_value = past_key_values[0][0][:, :, :, 0]
 
                 # Sum all dimensions of head_dim (-2) to avoid random errors such as: https://github.com/huggingface/transformers/pull/28032#issuecomment-1863691941
-                batch_index, non_attended_tokens = torch.where(first_layer_past_key_value.float().sum(-2) == 0)
+                batch_index, non_attended_tokens = torch.where(
+                    first_layer_past_key_value.float().sum(-2) == 0
+                )
 
                 # Get the target length
                 target_length = input_ids.shape[1]
@@ -755,10 +916,12 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
                 # Zero-out the places where we don't need to attend
                 extended_attention_mask[new_batch_index, new_non_attended_tokens] = 0
 
-                attention_mask = torch.cat((extended_attention_mask, attention_mask[:, -target_length:]), dim=1)
+                attention_mask = torch.cat(
+                    (extended_attention_mask, attention_mask[:, -target_length:]), dim=1
+                )
 
                 position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
-        
+
         outputs = self.language_model.model(
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -767,7 +930,7 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict
+            return_dict=return_dict,
         )
 
         hidden_states = outputs[0]
@@ -776,33 +939,41 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
 
         if labels is not None and self.training:
             valid_mask = labels[..., 1:] != -100
-            shift_logits = self.language_model.lm_head(hidden_states[:,:-1][valid_mask]).contiguous()
+            shift_logits = self.language_model.lm_head(
+                hidden_states[:, :-1][valid_mask]
+            ).contiguous()
             shift_logits = shift_logits.view(-1, self.language_model.config.vocab_size)
-            logits = shift_logits # dummy logits
+            logits = shift_logits  # dummy logits
             shift_labels = labels[..., 1:][valid_mask].contiguous()
             shift_labels = shift_labels.to(shift_logits.device)
             loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(shift_logits, shift_labels)
 
             # localize the positions for shift_labels where the id is in betweek [config.tokenizer_vocab_size-256, config.tokenizer_vocab_size]
-            valid_indices = (shift_labels<self.config.tokenizer_vocab_size) & (shift_labels>=self.config.tokenizer_vocab_size-256)
+            valid_indices = (shift_labels < self.config.tokenizer_vocab_size) & (
+                shift_labels >= self.config.tokenizer_vocab_size - 256
+            )
             if valid_indices.sum() > 0:
                 action_labels = shift_labels[valid_indices]
                 action_logits = shift_logits[valid_indices]
                 # calcualte the accuracy
-                action_accuracy = (action_logits.argmax(-1) == action_labels).float().mean()
+                action_accuracy = (
+                    (action_logits.argmax(-1) == action_labels).float().mean()
+                )
                 # log the action accuracy
             else:
                 action_accuracy = torch.tensor(0.0).to(shift_logits.device)
-            # torch distributed gather the action accuracy across all devices     
+            # torch distributed gather the action accuracy across all devices
             action_accuracy = action_accuracy.unsqueeze(0)
             # gather the action accuracy across all devices
-            action_accuracy_gather = [torch.zeros_like(action_accuracy) for _ in range(dist.get_world_size())]
+            action_accuracy_gather = [
+                torch.zeros_like(action_accuracy) for _ in range(dist.get_world_size())
+            ]
             dist.all_gather(action_accuracy_gather, action_accuracy)
             # concatenate the action accuracy across all devices
-            action_accuracy = torch.cat(action_accuracy_gather)            
-            
-            if dist.get_rank() == 0:            
+            action_accuracy = torch.cat(action_accuracy_gather)
+
+            if dist.get_rank() == 0:
                 # remove zero values
                 if action_accuracy.mean() == 0:
                     wandb.log({"action_accuracy": action_accuracy.mean().item()})
@@ -846,7 +1017,10 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
             # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
             # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
             # input)
-            if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
+            if (
+                attention_mask is not None
+                and attention_mask.shape[1] > input_ids.shape[1]
+            ):
                 input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
             # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
             # input_ids based on the past_length.
@@ -858,7 +1032,9 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
             # If the cache has seen more tokens than it can hold, then the cache has a size limit. Let's discard the
             # older attention values, as their corresponding values are not part of the input.
             if cache_length < past_length and attention_mask is not None:
-                attention_mask = attention_mask[:, -(cache_length + input_ids.shape[1]) :]
+                attention_mask = attention_mask[
+                    :, -(cache_length + input_ids.shape[1]) :
+                ]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -889,6 +1065,7 @@ class MagmaForCausalLM(MagmaPreTrainedModel):
     def _reorder_cache(self, *args, **kwargs):
         return self.language_model._reorder_cache(*args, **kwargs)
 
+
 @add_start_docstrings(
     """The Magma model which consists of a vision backbone and a language model.""",
     MAGMA_START_DOCSTRING,
@@ -897,17 +1074,22 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
     def __init__(self, config: MagmaConfig):
         super().__init__(config)
 
-        self.vision_tower = MagmaImageTower(config.vision_config, require_pretrained=('magma' not in config.name_or_path))
+        self.vision_tower = MagmaImageTower(
+            config.vision_config,
+            require_pretrained=("magma" not in config.name_or_path),
+        )
         self.multi_modal_projector = MagmaMultiModalProjector(config.vision_config)
 
         self.vocab_size = config.text_config.vocab_size
         self.language_model = AutoModelForCausalLM.from_config(
-            config.text_config, 
-            # attn_implementation=config._attn_implementation, 
-            trust_remote_code=True
+            config.text_config,
+            # attn_implementation=config._attn_implementation,
+            trust_remote_code=True,
         )
-        
-        self.pad_token_id = self.config.pad_token_id if self.config.pad_token_id is not None else -1
+
+        self.pad_token_id = (
+            self.config.pad_token_id if self.config.pad_token_id is not None else -1
+        )
         self._padding_side = "left"  # set it to left by default, user can use setter to change padding_sides
 
         self.post_init()
@@ -943,8 +1125,12 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
     def tie_weights(self):
         return self.language_model.tie_weights()
 
-    def resize_token_embeddings(self, new_num_tokens: Optional[int] = None, pad_to_multiple_of=None) -> nn.Embedding:
-        model_embeds = self.language_model.resize_token_embeddings(new_num_tokens, pad_to_multiple_of)
+    def resize_token_embeddings(
+        self, new_num_tokens: Optional[int] = None, pad_to_multiple_of=None
+    ) -> nn.Embedding:
+        model_embeds = self.language_model.resize_token_embeddings(
+            new_num_tokens, pad_to_multiple_of
+        )
         # update vocab size
         self.config.text_config.vocab_size = model_embeds.num_embeddings
         self.vocab_size = model_embeds.num_embeddings
@@ -1040,14 +1226,22 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
                         i j Y Y Y Y Y k l m n
                     ]
         """
-        image_token_index = image_token_index if image_token_index is not None else self.config.image_token_index
-        ignore_index = ignore_index if ignore_index is not None else self.config.ignore_index
+        image_token_index = (
+            image_token_index
+            if image_token_index is not None
+            else self.config.image_token_index
+        )
+        ignore_index = (
+            ignore_index if ignore_index is not None else self.config.ignore_index
+        )
 
         with torch.no_grad():
             num_images = feature_lens.size(0)
             num_image_features, embed_dim = image_features.shape
             if feature_lens.sum() != num_image_features:
-                raise ValueError(f"{feature_lens=} / {feature_lens.sum()} != {image_features.shape=}")
+                raise ValueError(
+                    f"{feature_lens=} / {feature_lens.sum()} != {image_features.shape=}"
+                )
             batch_size = input_ids.shape[0]
             _left_padding = torch.any(attention_mask[:, 0] == 0)
             _right_padding = torch.any(attention_mask[:, -1] == 0)
@@ -1063,7 +1257,9 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
                     left_padding = self.padding_side == "left"
                 else:
                     # invalid attention_mask
-                    raise ValueError(f"both side of attention_mask has zero, invalid. {attention_mask}")
+                    raise ValueError(
+                        f"both side of attention_mask has zero, invalid. {attention_mask}"
+                    )
 
             # Whether to turn off right padding
             # 1. Create a mask to know where special image tokens are
@@ -1079,14 +1275,22 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
                 )
             # Compute the maximum embed dimension
             # max_image_feature_lens is max_feature_lens per batch
-            feature_lens_batch = feature_lens.split(num_special_image_tokens.tolist(), dim=0)
-            feature_lens_batch_sum = torch.tensor([x.sum() for x in feature_lens_batch], device=feature_lens.device)
+            feature_lens_batch = feature_lens.split(
+                num_special_image_tokens.tolist(), dim=0
+            )
+            feature_lens_batch_sum = torch.tensor(
+                [x.sum() for x in feature_lens_batch], device=feature_lens.device
+            )
             embed_sequence_lengths = (
-                (attention_mask == 1).long().sum(-1) - num_special_image_tokens + feature_lens_batch_sum
+                (attention_mask == 1).long().sum(-1)
+                - num_special_image_tokens
+                + feature_lens_batch_sum
             )
             max_embed_dim = embed_sequence_lengths.max()
 
-            batch_indices, non_image_indices = torch.where((input_ids != image_token_index) & (attention_mask == 1))
+            batch_indices, non_image_indices = torch.where(
+                (input_ids != image_token_index) & (attention_mask == 1)
+            )
             # 2. Compute the positions where text should be written
             # Calculate new positions for text tokens in merged image-text sequence.
             # `special_image_token_mask` identifies image tokens. Each image token will be replaced by `nb_text_tokens_per_images` text tokens.
@@ -1106,14 +1310,23 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
 
         # 3. Create the full embedding, already padded to the maximum position
         final_embedding = torch.zeros(
-            batch_size, max_embed_dim, embed_dim, dtype=inputs_embeds.dtype, device=inputs_embeds.device
+            batch_size,
+            max_embed_dim,
+            embed_dim,
+            dtype=inputs_embeds.dtype,
+            device=inputs_embeds.device,
         )
         final_attention_mask = torch.zeros(
-            batch_size, max_embed_dim, dtype=attention_mask.dtype, device=inputs_embeds.device
+            batch_size,
+            max_embed_dim,
+            dtype=attention_mask.dtype,
+            device=inputs_embeds.device,
         )
         final_labels = None
         if labels is not None:
-            final_labels = torch.full_like(final_attention_mask, ignore_index).to(torch.long)
+            final_labels = torch.full_like(final_attention_mask, ignore_index).to(
+                torch.long
+            )
         # In case the Vision model or the Language model has been offloaded to CPU, we need to manually
         # set the corresponding tensors into their correct target device.
         target_device = inputs_embeds.device
@@ -1126,15 +1339,24 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
 
         # 4. Fill the embeddings based on the mask. If we have ["hey" "<image>", "how", "are"]
         # we need to index copy on [0, 577, 578, 579] for the text and [1:576] for the image features
-        final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[batch_indices, non_image_indices]
-        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[batch_indices, non_image_indices]
+        final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[
+            batch_indices, non_image_indices
+        ]
+        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[
+            batch_indices, non_image_indices
+        ]
         if labels is not None:
-            final_labels[batch_indices, text_to_overwrite] = labels[batch_indices, non_image_indices]
+            final_labels[batch_indices, text_to_overwrite] = labels[
+                batch_indices, non_image_indices
+            ]
 
         # 5. Fill the embeddings corresponding to the images. Anything that is not `text_positions` needs filling (#29835)
         with torch.no_grad():
             image_to_overwrite = torch.full(
-                (batch_size, max_embed_dim), True, dtype=torch.bool, device=inputs_embeds.device
+                (batch_size, max_embed_dim),
+                True,
+                dtype=torch.bool,
+                device=inputs_embeds.device,
             )
             image_to_overwrite[batch_indices, text_to_overwrite] = False
             embed_indices = torch.arange(max_embed_dim).unsqueeze(0).to(target_device)
@@ -1156,14 +1378,20 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
                     f" the number of image given to the model is {num_images}. "
                     f"This prevents correct indexing and breaks batch generation."
                 )
-        final_embedding[image_to_overwrite] = image_features.contiguous().reshape(-1, embed_dim).to(target_device)
+        final_embedding[image_to_overwrite] = (
+            image_features.contiguous().reshape(-1, embed_dim).to(target_device)
+        )
         final_attention_mask |= image_to_overwrite
-        position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_((final_attention_mask == 0), 1)
+        position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_(
+            (final_attention_mask == 0), 1
+        )
 
         return final_embedding, final_attention_mask, position_ids, final_labels
 
     @add_start_docstrings_to_model_forward(MAGMA_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=MagmaCausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
+    @replace_return_docstrings(
+        output_type=MagmaCausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC
+    )
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -1211,13 +1439,23 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
         >>> processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "[INST]  \nWhat is shown in this image? [/INST] The image appears to be a radar chart, which is a type of multi-dimensional plot (...)"
         ```"""
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        output_attentions = (
+            output_attentions
+            if output_attentions is not None
+            else self.config.output_attentions
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        output_hidden_states = (
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
+        )
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
         vision_feature_layer = (
-            vision_feature_layer if vision_feature_layer is not None else self.config.vision_config['vision_feature_layer']
+            vision_feature_layer
+            if vision_feature_layer is not None
+            else self.config.vision_config["vision_feature_layer"]
         )
 
         if inputs_embeds is None:
@@ -1228,74 +1466,150 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
             inputs_embeds = self.get_input_embeddings()(for_inputs_embeds_ids)
 
             # 2. Merge text and images
-            if pixel_values is not None and input_ids.shape[1] != 1 and pixel_values.size(0) > 0:
+            if (
+                pixel_values is not None
+                and input_ids.shape[1] != 1
+                and pixel_values.size(0) > 0
+            ):
                 # ! infer image_num_patches from image_sizes
                 # figure out if pixel_values is concatenated or stacked
                 if pixel_values.dim() == 5:
-                    image_num_patches = [(imsize[:,0]*imsize[:,1]).tolist() for imsize in image_sizes]
+                    image_num_patches = [
+                        (imsize[:, 0] * imsize[:, 1]).tolist() for imsize in image_sizes
+                    ]
                     # stacking when input is (batch_size, num_patches, num_channels, height, width)
                     _pixel_values_list = [
-                        pix_val[:num_patch] for pix_val, num_patch in zip(pixel_values, image_num_patches)
+                        pix_val[:num_patch]
+                        for pix_val, num_patch in zip(pixel_values, image_num_patches)
                     ]
                     pixel_values = torch.cat(_pixel_values_list, dim=0)
                 elif pixel_values.dim() != 4:
                     # otherwise has to be stacked from list of (num_patches, num_channels, height, width)
-                    raise ValueError(f"pixel_values of shape {pixel_values.shape}, expect to be of 4 or 5 dimensions")
+                    raise ValueError(
+                        f"pixel_values of shape {pixel_values.shape}, expect to be of 4 or 5 dimensions"
+                    )
 
-                if self.config.vision_config['img_anyres_strategy'] == "global":
-                    num_patches_for_images = [(imsize[0]*imsize[1]).item() for imsize in image_sizes]
-                    pixel_values_for_images = pixel_values.split(num_patches_for_images, dim=0)
+                if self.config.vision_config["img_anyres_strategy"] == "global":
+                    num_patches_for_images = [
+                        (imsize[0] * imsize[1]).item() for imsize in image_sizes
+                    ]
+                    pixel_values_for_images = pixel_values.split(
+                        num_patches_for_images, dim=0
+                    )
                     selected_image_features = []
-                    for idx, (image_size, pixel_values_for_image) in enumerate(zip(image_sizes, pixel_values_for_images)):
-                        pixel_values_for_image = pixel_values_for_image.view(image_size[0], image_size[1], *pixel_values_for_image.shape[1:])
-                        pixel_values_for_image = pixel_values_for_image.permute(2, 0, 3, 1, 4).flatten(3, 4).flatten(1, 2).unsqueeze(0)
+                    for idx, (image_size, pixel_values_for_image) in enumerate(
+                        zip(image_sizes, pixel_values_for_images)
+                    ):
+                        pixel_values_for_image = pixel_values_for_image.view(
+                            image_size[0],
+                            image_size[1],
+                            *pixel_values_for_image.shape[1:],
+                        )
+                        pixel_values_for_image = (
+                            pixel_values_for_image.permute(2, 0, 3, 1, 4)
+                            .flatten(3, 4)
+                            .flatten(1, 2)
+                            .unsqueeze(0)
+                        )
                         image_features = self.vision_tower(pixel_values_for_image)
-                        selected_image_feature = image_features[vision_feature_layer][0].permute(1, 2, 0)
-                        selected_image_feature = self.multi_modal_projector(selected_image_feature)
-                        selected_image_feature = torch.cat((selected_image_feature, self.multi_modal_projector.row_seperator.repeat(selected_image_feature.shape[0],1,1)), dim=1)
+                        selected_image_feature = image_features[vision_feature_layer][
+                            0
+                        ].permute(1, 2, 0)
+                        selected_image_feature = self.multi_modal_projector(
+                            selected_image_feature
+                        )
+                        selected_image_feature = torch.cat(
+                            (
+                                selected_image_feature,
+                                self.multi_modal_projector.row_seperator.repeat(
+                                    selected_image_feature.shape[0], 1, 1
+                                ),
+                            ),
+                            dim=1,
+                        )
                         selected_image_features.append(selected_image_feature)
-                elif self.config.vision_config['img_anyres_strategy'] == "crop":
-                    image_features = self.vision_tower(pixel_values)[vision_feature_layer].permute(0, 2, 3, 1)
+                elif self.config.vision_config["img_anyres_strategy"] == "crop":
+                    image_features = self.vision_tower(pixel_values)[
+                        vision_feature_layer
+                    ].permute(0, 2, 3, 1)
                     image_features = self.multi_modal_projector(image_features)
-                    num_patches_for_images = [(imsize[0]*imsize[1]).item() for imsize in image_sizes]
-                    image_features_split = torch.split(image_features, num_patches_for_images, dim=0)
+                    num_patches_for_images = [
+                        (imsize[0] * imsize[1]).item() for imsize in image_sizes
+                    ]
+                    image_features_split = torch.split(
+                        image_features, num_patches_for_images, dim=0
+                    )
                     selected_image_features = []
-                    for image_feature, image_size in zip(image_features_split, image_sizes):
-                        image_feature = image_feature.view(image_size[0], image_size[1], *image_feature.shape[1:])
-                        image_feature = image_feature.permute(0, 2, 1, 3, 4).flatten(2, 3).flatten(0, 1)
-                        image_feature = torch.cat((image_feature, self.multi_modal_projector.row_seperator.repeat(image_feature.shape[0],1,1)), dim=1)
+                    for image_feature, image_size in zip(
+                        image_features_split, image_sizes
+                    ):
+                        image_feature = image_feature.view(
+                            image_size[0], image_size[1], *image_feature.shape[1:]
+                        )
+                        image_feature = (
+                            image_feature.permute(0, 2, 1, 3, 4)
+                            .flatten(2, 3)
+                            .flatten(0, 1)
+                        )
+                        image_feature = torch.cat(
+                            (
+                                image_feature,
+                                self.multi_modal_projector.row_seperator.repeat(
+                                    image_feature.shape[0], 1, 1
+                                ),
+                            ),
+                            dim=1,
+                        )
                         selected_image_features.append(image_feature)
 
                 # NOTE we only support multimodal_patch_merge_type == "spatial_unpad"
-                feature_lens = [elem.shape[0]*elem.shape[1] for elem in selected_image_features]        
-                image_features = torch.cat([elem.flatten(0, 1) for elem in selected_image_features], 0)
-                feature_lens = torch.tensor(feature_lens, dtype=torch.long, device=image_features.device)
+                feature_lens = [
+                    elem.shape[0] * elem.shape[1] for elem in selected_image_features
+                ]
+                image_features = torch.cat(
+                    [elem.flatten(0, 1) for elem in selected_image_features], 0
+                )
+                feature_lens = torch.tensor(
+                    feature_lens, dtype=torch.long, device=image_features.device
+                )
 
                 # inputs_embeds = inputs_embeds.to(image_features.dtype)
-                inputs_embeds, attention_mask, position_ids, labels = self._merge_input_ids_with_image_features(
-                    image_features,
-                    feature_lens,
-                    inputs_embeds,
-                    input_ids,
-                    attention_mask,
-                    position_ids,
-                    labels=labels,
+                inputs_embeds, attention_mask, position_ids, labels = (
+                    self._merge_input_ids_with_image_features(
+                        image_features,
+                        feature_lens,
+                        inputs_embeds,
+                        input_ids,
+                        attention_mask,
+                        position_ids,
+                        labels=labels,
+                    )
                 )
 
             # pixel_values is not None but is empty ---> text only cases
-            elif pixel_values is not None and input_ids.shape[1] != 1 and pixel_values.size(0) == 0:
+            elif (
+                pixel_values is not None
+                and input_ids.shape[1] != 1
+                and pixel_values.size(0) == 0
+            ):
                 # there are no images
                 pass
 
             # In case input_ids.shape[1] == 1 & pixel_values==None & past_key_values != None, we are in the case of
             # generation with cache
-            elif past_key_values is not None and pixel_values is not None and input_ids.shape[1] == 1:
+            elif (
+                past_key_values is not None
+                and pixel_values is not None
+                and input_ids.shape[1] == 1
+            ):
                 # Retrieve the first layer to inspect the logits and mask out the hidden states
                 # that are set to 0
                 first_layer_past_key_value = past_key_values[0][0][:, :, :, 0]
 
                 # Sum all dimensions of head_dim (-2) to avoid random errors such as: https://github.com/huggingface/transformers/pull/28032#issuecomment-1863691941
-                batch_index, non_attended_tokens = torch.where(first_layer_past_key_value.float().sum(-2) == 0)
+                batch_index, non_attended_tokens = torch.where(
+                    first_layer_past_key_value.float().sum(-2) == 0
+                )
 
                 # Get the target length
                 target_length = input_ids.shape[1]
@@ -1315,7 +1629,9 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
                 # Zero-out the places where we don't need to attend
                 extended_attention_mask[new_batch_index, new_non_attended_tokens] = 0
 
-                attention_mask = torch.cat((extended_attention_mask, attention_mask[:, -target_length:]), dim=1)
+                attention_mask = torch.cat(
+                    (extended_attention_mask, attention_mask[:, -target_length:]), dim=1
+                )
 
                 position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
 
@@ -1337,15 +1653,20 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
             # Shift so that tokens < n predict n
             if attention_mask is not None:
                 shift_attention_mask = attention_mask[..., 1:]
-                shift_logits = logits[..., :-1, :][shift_attention_mask.to(logits.device) != 0].contiguous()
-                shift_labels = labels[..., 1:][shift_attention_mask.to(labels.device) != 0].contiguous()
+                shift_logits = logits[..., :-1, :][
+                    shift_attention_mask.to(logits.device) != 0
+                ].contiguous()
+                shift_labels = labels[..., 1:][
+                    shift_attention_mask.to(labels.device) != 0
+                ].contiguous()
             else:
                 shift_logits = logits[..., :-1, :].contiguous()
                 shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
             loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1).to(shift_logits.device)
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1).to(shift_logits.device),
             )
 
         if not return_dict:
@@ -1381,7 +1702,10 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
             # 1 - If the length of the attention_mask exceeds the length of input_ids, then we are in a setting where
             # some of the inputs are exclusively passed as part of the cache (e.g. when passing input_embeds as
             # input)
-            if attention_mask is not None and attention_mask.shape[1] > input_ids.shape[1]:
+            if (
+                attention_mask is not None
+                and attention_mask.shape[1] > input_ids.shape[1]
+            ):
                 input_ids = input_ids[:, -(attention_mask.shape[1] - past_length) :]
             # 2 - If the past_length is smaller than input_ids', then input_ids holds all input tokens. We can discard
             # input_ids based on the past_length.
@@ -1393,7 +1717,9 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
             # If the cache has seen more tokens than it can hold, then the cache has a size limit. Let's discard the
             # older attention values, as their corresponding values are not part of the input.
             if cache_length < past_length and attention_mask is not None:
-                attention_mask = attention_mask[:, -(cache_length + input_ids.shape[1]) :]
+                attention_mask = attention_mask[
+                    :, -(cache_length + input_ids.shape[1]) :
+                ]
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -1423,6 +1749,7 @@ class MagmaForConditionalGeneration(MagmaPreTrainedModel):
 
     def _reorder_cache(self, *args, **kwargs):
         return self.language_model._reorder_cache(*args, **kwargs)
+
 
 AutoConfig.register("magma", MagmaConfig)
 AutoModelForCausalLM.register(MagmaConfig, MagmaForConditionalGeneration)

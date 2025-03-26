@@ -5,13 +5,10 @@
 # Jianwei Yang (jianwyan@microsoft.com)
 # --------------------------------------------------------
 
-import os
-import warnings
 from utils.visualizer import Visualizer
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 import random
 import gradio as gr
-import ast, re
+import ast
 
 import torch
 import torchvision

@@ -1,9 +1,9 @@
 import torch
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from magma.processing_magma import MagmaProcessor
-from typing import Dict, Optional, Sequence, List
+from typing import Dict, Sequence
 import transformers 
-from data.utils.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from data.utils.constants import IGNORE_INDEX
 
 @dataclass
 class DataCollatorForSupervisedDataset(object):

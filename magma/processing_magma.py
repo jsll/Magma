@@ -18,13 +18,11 @@ Processor class for Magma.
 
 from typing import List, Optional, Union
 
-import transformers
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.image_utils import ImageInput
 from transformers.processing_utils import ProcessorMixin
 from transformers.tokenization_utils_base import PaddingStrategy, TextInput, TruncationStrategy
 from transformers.utils import TensorType
-from .configuration_magma import MagmaConfig
 
 
 class MagmaProcessor(ProcessorMixin):

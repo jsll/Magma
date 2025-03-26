@@ -1,12 +1,6 @@
-import torch
-import torchvision
-import re
-import cv2
-import numpy as np
 import os
 import yaml
 from tqdm import tqdm
-from PIL import Image
 from data.conversations import Constructor
 
 class Magma(Constructor):

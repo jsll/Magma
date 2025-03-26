@@ -15,35 +15,21 @@
 
 """Image processor class for Magma."""
 
-from typing import List, Optional, Union
+from typing import Optional, Union
 import logging
 
 # Configure root logger
 logging.basicConfig(level=logging.INFO)
 
-import numpy as np
-import torchvision
-from transformers.image_processing_utils import BaseImageProcessor, BatchFeature
-from transformers.image_transforms import (
-    convert_to_rgb,
-)
-from transformers.image_utils import (
-    OPENAI_CLIP_MEAN,
-    OPENAI_CLIP_STD,
-    ImageInput,
-    make_list_of_images,
-    valid_images,
-)
 
-from transformers.utils import TensorType, is_vision_available, logging
+from transformers.utils import is_vision_available, logging
 # logging.set_verbosity_info()
 logger = logging.get_logger(__name__)
 
 
 if is_vision_available():
-    from PIL import Image
+    pass
 
-import torchvision
 
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
@@ -53,19 +39,15 @@ import torchvision
 import json
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 import open_clip
-from open_clip.transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, merge_preprocess_kwargs
-from open_clip.pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained,\
-    list_pretrained_tags_by_model, download_pretrained_from_hf
-from open_clip.model import CLIP, CustomTextCLIP, convert_weights_to_lp, convert_to_custom_text_state_dict,\
-    resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg    
-from pathlib import Path
-from typing import Optional, Tuple, Type
-from functools import partial
+from open_clip.transform import AugmentationCfg, PreprocessCfg, merge_preprocess_dict, merge_preprocess_kwargs
+from open_clip.pretrained import get_pretrained_cfg, download_pretrained,\
+    download_pretrained_from_hf
+from open_clip.model import CLIP, CustomTextCLIP, convert_weights_to_lp, get_cast_dtype, set_model_preprocess_cfg    
+from typing import Tuple
 import torch.utils.checkpoint as checkpoint
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict
 from dataclasses import asdict
 HF_HUB_PREFIX = 'hf-hub:'
 

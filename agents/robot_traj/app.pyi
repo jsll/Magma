@@ -5,13 +5,11 @@
 # Jianwei Yang (jianwyan@microsoft.com)
 # --------------------------------------------------------
 
-import os
-import warnings
 from utils.visualizer import Visualizer
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 import random
 import gradio as gr
-import ast, re
+import ast
 
 import torch
 import torchvision
@@ -132,7 +130,6 @@ def inference(image, task, *args, **kwargs):
     except Exception as e:
         print(e)
         return None
-from gradio.events import Dependency
 
 class ImageMask(gr.components.Image):
     """
@@ -146,7 +143,7 @@ class ImageMask(gr.components.Image):
 
     def preprocess(self, x):
         return super().preprocess(x)
-    from typing import Callable, Literal, Sequence, Any, TYPE_CHECKING
+    from typing import Literal, Sequence
     from gradio.blocks import Block
     if TYPE_CHECKING:
         from gradio.components import Timer
@@ -163,7 +160,7 @@ class Video(gr.components.Video):
 
     def preprocess(self, x):
         return super().preprocess(x)
-    from typing import Callable, Literal, Sequence, Any, TYPE_CHECKING
+    from typing import Literal, Sequence
     from gradio.blocks import Block
     if TYPE_CHECKING:
         from gradio.components import Timer

@@ -1,14 +1,11 @@
 import torch
 import torchvision
 from torch.utils.data import DataLoader, Dataset
-from torchvision import datasets
-from torchvision.transforms import Resize
 from torchvision.transforms import ToPILImage
 import os
-import sys
 import argparse
-from typing import Dict, Optional, Sequence, List
-from dataclasses import dataclass, field
+from typing import Dict, Sequence
+from dataclasses import dataclass
 import clip
 import concurrent.futures
 
@@ -126,7 +123,6 @@ def main():
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
-    import clip
     model, preprocess = clip.load("ViT-L/14@336px", device='cuda')
     model.eval()
 

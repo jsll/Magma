@@ -1,17 +1,10 @@
 # from ultralytics import YOLO
-import os
 import io
 import base64
 import time
-from PIL import Image, ImageDraw, ImageFont
-import json
-import requests
+from PIL import Image
 # utility function
-import os
 
-import json
-import sys
-import os
 import cv2
 import numpy as np
 # %matplotlib inline
@@ -28,15 +21,10 @@ paddle_ocr = PaddleOCR(
     use_dilation=True,  # improves accuracy
     det_db_score_mode='slow',  # improves accuracy
     rec_batch_num=1024)
-import time
-import base64
 
-import os
-import ast
 import torch
 from typing import Tuple, List, Union
 from torchvision.ops import box_convert
-import re
 from torchvision.transforms import ToPILImage
 import supervision as sv
 import torchvision.transforms as T

@@ -2,12 +2,6 @@ import numpy as np
 from PIL import Image
 import random
 import torch
-import torchvision
-import json
-import sys
-import os
-from transformers import AutoModelForVision2Seq, AutoProcessor
-from magma.image_processing_magma import MagmaImageProcessor
 from magma.processing_magma import MagmaProcessor
 from magma.modeling_magma import MagmaForCausalLM
 from transforms3d.euler import euler2axangle

@@ -1,34 +1,17 @@
 import os
 import copy
-from dataclasses import dataclass, field
-import json
-import logging
-import pathlib
-from typing import Dict, Optional, Sequence, List
-import pandas as pd
+from typing import Dict, Sequence, List
 import torch
-import deepspeed
-import glob
-import pandas as pd
-import transformers
-import tokenizers
 import random
-import re
-import cv2
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data import DataLoader, Dataset, DistributedSampler, IterableDataset
+from torch.utils.data import DistributedSampler
 import torch.distributed as dist
 import collections
 from PIL import Image
-from io import BytesIO
-from data.utils.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-from magma.image_processing_magma import MagmaImageProcessor
+from data.utils.constants import IGNORE_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from magma.processing_magma import MagmaProcessor
 from .data_item import DataItem
 from . import *
-from PIL import Image, ImageFile
-from PIL import ImageDraw, ImageFont
-from typing import List, Optional, Union
 
 def preprocess_multimodal(
     sources: Sequence[str],
@@ -262,7 +245,7 @@ class LazySupervisedDataset(Dataset):
                         visual_traces = torch.load(visual_trace_path, map_location='cpu')
                         video_path = os.path.join(image_folder, item['video'].replace('/home/tanreuben/vlp_datasets/', ''))
                         item.update(visual_traces)
-                    except Exception as e:
+                    except Exception:
                         print(f"Error loading: {visual_trace_path}")
                         visual_traces = None
                         video_path = None

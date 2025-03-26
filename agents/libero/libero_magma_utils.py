@@ -2,7 +2,6 @@ import os
 import json
 import torch
 import numpy as np
-from magma.image_processing_magma import MagmaImageProcessor
 from magma.processing_magma import MagmaProcessor
 from magma.modeling_magma import MagmaForConditionalGeneration
 

@@ -1,13 +1,10 @@
 import torch
 import torchvision
-import re
 import cv2
-import numpy as np
 import os
 import yaml
-from PIL import Image
 from data.utils.visual_trace import visual_trace
-from data.utils.som_tom import som_prompting, tom_prompting
+from data.utils.som_tom import som_prompting
 from data.conversations import Constructor
 from data.openx.action_tokenizer import ActionTokenizer
 
@@ -144,13 +141,13 @@ class OpenXMagma(Constructor):
                     future_pts_np = future_pts.cpu().numpy().reshape(-1, 2)
                     try:
                         (H, status) = cv2.findHomography(future_pts_np, reference_pts_np, cv2.RANSAC, 4.0)
-                    except Exception as e:
+                    except Exception:
                         continue
                     future_pts_np_transformed = cv2.perspectiveTransform(future_pts_np.reshape(1, -1, 2), H).reshape(-1, 2)                                
                     future_pts_transformed_k = torch.tensor(future_pts_np_transformed, dtype=torch.float32)
                     future_pts_transformed.append(future_pts_transformed_k)            
                 pred_tracks = torch.stack([start_pos] + future_pts_transformed, dim=0).unsqueeze(0)           
-            except Exception as e:
+            except Exception:
                 pass
             
             if pred_tracks_history.size(1) > 0:
@@ -161,13 +158,13 @@ class OpenXMagma(Constructor):
                         history_pts_np = history_pts.cpu().numpy().reshape(-1, 2)
                         try:
                             (H, status) = cv2.findHomography(history_pts_np, reference_pts_np, cv2.RANSAC, 4.0)
-                        except Exception as e:
+                        except Exception:
                             continue
                         history_pts_np_transformed = cv2.perspectiveTransform(history_pts_np.reshape(1, -1, 2), H).reshape(-1, 2)                                
                         history_pts_transformed_k = torch.tensor(history_pts_np_transformed, dtype=torch.float32)
                         history_pts_transformed.append(history_pts_transformed_k)            
                     pred_tracks_history = torch.stack(history_pts_transformed, dim=0).unsqueeze(0)   
-                except Exception as e:
+                except Exception:
                     pass
         
         # step 2: find positive traces and negative traces

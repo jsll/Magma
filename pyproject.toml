@@ -13,33 +13,32 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-    "torch==2.3.1",
-    "torchvision==0.18.1", 
-    "pytorch-lightning>=1.0.8",
-    "transformers>=4.49.0",
-    "tokenizers>=0.15.0",
-    "sentencepiece==0.1.99",
+    "torch",
+    "torchvision", 
+    "pytorch-lightning",
+    "transformers",
+    "tokenizers",
+    "sentencepiece",
     "shortuuid",
-    "accelerate==0.34.2",
-    "peft==0.4.0",
-    "bitsandbytes==0.44.1",
-    "pydantic>=2.0",
-    "markdown2[all]",
+    "accelerate",
+    "peft",
+    "bitsandbytes",
+    "pydantic",
     "numpy",
-    "scikit-learn==1.5.0",
-    "gradio==4.44.1",
+    "scikit-learn",
+    "gradio",
     "gradio_client",
     "spaces",
     "requests",
     "httpx",
     "uvicorn",
     "fastapi",
-    "einops==0.6.1",
-    "einops-exts==0.0.4",
-    "timm==0.9.12",
-    "tensorflow==2.15.0",
-    "tensorflow_datasets==4.9.3",
-    "tensorflow_graphics==2021.12.3",    
+    "einops",
+    "einops-exts",
+    "timm",
+    "tensorflow",
+    "tensorflow_datasets",
+    "tensorflow_graphics",    
     "draccus",    
     "pyav",
     "numba", 
@@ -62,13 +61,13 @@ eval = [
     "azure-ai-ml",
     "datasets",
     "fire",
-    "openai==1.8.0",
+    "openai",
     "opencv-python",
-    "openpyxl==3.1.2",
-    "pillow==9.4.0",
+    "openpyxl",
+    "pillow",
     "python-Levenshtein",
     "rich",
-    "streamlit==1.29.0",
+    "streamlit",
     "typer[all]",
     "word2number",
 ]
@@ -88,37 +87,34 @@ agent = [
 
 [tool.setuptools.packages.find]
 exclude = [
-    "assets*",
-    "benchmark*",
+    "assets",
+    "benchmark",
     "docs",
-    "dist*",
-    "playground*",
-    "scripts*",
-    "tests*",
-    "azureblobs*",
-    "azure*"
+    "dist",
+    "playground",
+    "scripts",
+    "tests",
+    "azureblobs",
+    "azure"
 ]
-
 [tool.wheel]
 exclude = [
-    "assets*",
-    "benchmark*",
+    "assets",
+    "benchmark",
     "docs",
-    "dist*",
-    "playground*",
-    "scripts*",
-    "tests*",
-    "azureblobs*",
-    "azure*"    
+    "dist",
+    "playground",
+    "scripts",
+    "tests",
+    "azureblobs",
+    "azure"    
 ]
-
 [tool.black]
 line-length = 120
 skip-string-normalization = true
-
 [tool.pyright]
 exclude = [
-    "**/__pycache__",
+    "**/pycache",
     "playground",
     "_results",
     "_data",
