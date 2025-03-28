@@ -106,7 +106,7 @@ def test(head_fusion, random_text_prompt, random_input_image):
         print("Entropy:", entropy)
         print("Std:", average_attention_from_actions_to_all_inputs_except_actions.std())
         patch_indexes = extract_image_patch_token_indices(image_token_position, total_patches)
-        text_token_indexes = extract_text_token_indices(attention_rollout_matrix.shape[1]-8, np.arange(patch_indexes[0], patch_indexes[-1]+1))
+        text_token_indexes = extract_text_token_indices(attention_rollout_matrix.shape[1]-8test_huggingface.py, np.arange(patch_indexes[0], patch_indexes[-1]+1))
         visualize_attention_over_image(attention_rollout_matrix, image, patch_indexes, action_token_indexes, title=action_prompt + "_" + object_prompt )
 
         attention_from_each_action_to_text_tokens, average_attention_from_all_action_to_text= average_attention_rollout_from_tokens_to_tokens(attention_rollout_matrix, action_token_indexes, text_token_indexes)
