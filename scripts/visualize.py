@@ -51,7 +51,7 @@ def visualize_attention_over_image(
         # axs_individual[i].axis("off")
         # axs_individual[i].set_title(f"Token {i}")
 
-        mask_resized = cv2.resize(mask, (224, 224))
+        mask_resized = cv2.resize(mask, (256, 256))
         images_per_readout.append(mask_resized.copy())
 
     # plt.colorbar(im, ax=axs_individual[-1], fraction=0.046, pad=0.04)

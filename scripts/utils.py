@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 def average_attention_heads(
     attention_matrix: torch.Tensor, head_fusion: str = "mean", dim: int = 2
 ) -> torch.Tensor:
@@ -70,4 +71,31 @@ def combine_attention_matrices(attention_outputs):
     combined_attention = combined_attention.permute(1, 0, 2, 3, 4)
 
     return combined_attention
+
+def extract_image_patch_token_indices(patches_start_ind, total_patches):
+    indexes = np.arange(patches_start_ind, patches_start_ind + total_patches+1)# We add +1 to make the length of indexes a multiple of 17
+    mask = np.ones_like(indexes, dtype=bool)
+    mask[16::17] = False  # Mark every 17th element (starting from index 16) as False
+    filtered_indexes = indexes[mask]
+    return filtered_indexes
+
+def extract_text_token_indices(total_number_of_tokens, image_patche_indexes):
+    indexes = np.arange(0,total_number_of_tokens)
+    mask = np.ones_like(indexes , dtype=bool)
+    mask[image_patche_indexes] = False  # Mark every 17th element (starting from index 16) as False
+    filtered_indexes = indexes[mask]
+    return filtered_indexes
+
+def average_attention_rollout_from_tokens_to_tokens(attention_rollout, from_tokens, to_tokens):
+    attentions_from_all_from_tokens_to_tokens = []
+    for from_token in from_tokens:
+        acction_from_token_to_tokens = attention_rollout[0, from_token, to_tokens]
+        acction_from_token_to_tokens = np.asarray(acction_from_token_to_tokens)
+        acction_from_token_to_tokens = acction_from_token_to_tokens / np.sum(acction_from_token_to_tokens)
+        attentions_from_all_from_tokens_to_tokens .append(acction_from_token_to_tokens)
+
+    attentions_from_all_from_tokens_to_tokens  = np.asarray(attentions_from_all_from_tokens_to_tokens)
+    averaged_attention = attentions_from_all_from_tokens_to_tokens.mean(0, keepdims=True)
+    return attentions_from_all_from_tokens_to_tokens, averaged_attention
+
 

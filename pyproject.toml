@@ -49,6 +49,7 @@ dependencies = [
     "sqlitedict",
     "open_clip_torch",
     "flash-attn",
+    "datasets==2.14.6"
 ]
 
 [project.optional-dependencies]

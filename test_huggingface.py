@@ -2,9 +2,13 @@ from PIL import Image
 import torch
 from transformers import AutoModelForCausalLM
 from transformers import AutoProcessor 
-from scripts.utils import average_attention_heads,attention_rollout,combine_attention_matrices
+from scripts.utils import average_attention_heads,attention_rollout,combine_attention_matrices, extract_image_patch_token_indices, extract_text_token_indices, average_attention_rollout_from_tokens_to_tokens
+from scripts.visualize import visualize_attention_over_image, visualize_attention_over_prompt
 import argparse
 import datasets
+import itertools
+import io
+import numpy as np
 
 def test(head_fusion, random_text_prompt, random_input_image):
 
@@ -27,6 +31,8 @@ def test(head_fusion, random_text_prompt, random_input_image):
         "output_attentions": True,  # Add this line to get attention matrices
         "output_hidden_states":True,
     } 
+    total_patches = 16*16+ 15# The 15 comes from the fact that after each 16th patch there is a newlien token
+
 
     if not random_input_image:
         dataset_names = [
@@ -48,15 +54,6 @@ def test(head_fusion, random_text_prompt, random_input_image):
         data = data_per_dataset["fractal20220817_data"]
         image = Image.open(io.BytesIO(data["data.pickle"]["steps"][-1]["observation"]["image"]["bytes"]))
         image = image.resize((256, 256))
-
-        # Inference
-        #image = Image.open("./assets/images/magma_logo.jpg").convert("RGB")
-        #image = image.resize((256, 256))
-        #image_size = 256
-        #patch_size = 16 # This may vary based on the model's vision encoder
-        #num_patches_h = image_size // patch_size
-        #num_patches_w = image_size // patch_size
-        #total_patches = num_patches_h * num_patches_w
 
     while True:
         if not random_text_prompt:
@@ -85,9 +82,9 @@ def test(head_fusion, random_text_prompt, random_input_image):
 
         input_sequence = inputs["input_ids"][0]
         image_token_position = torch.where(input_sequence == model.config.image_token_index)[0].item()
-        patches_start = image_token_position
-        patches_end = patches_start + total_patches
+        # Remove the special token <image> from the input sequence as this gets replaced by the actual image patch tokens
 
+        decoded_input_tokens.pop(image_token_position)
         with torch.inference_mode():
             outputs= model.generate(**inputs, **generation_args, return_dict_in_generate=True)
 
@@ -99,18 +96,23 @@ def test(head_fusion, random_text_prompt, random_input_image):
         combined_attention_matrices = combine_attention_matrices(attention_matrices )
         layer_wise_average_attention = average_attention_heads(combined_attention_matrices, head_fusion=head_fusion)
         attention_rollout_matrix = attention_rollout(layer_wise_average_attention)
-
         attention_rollout_from_actions_to_all_inputs_except_actions = attention_rollout_matrix[0,-8:-1,:-8]
-        average_attention_from_actions_to_all_inputs_except_actions = attention_rollout_from_actions_to_all_inputs.mean(dim=0)
+        average_attention_from_actions_to_all_inputs_except_actions = attention_rollout_from_actions_to_all_inputs_except_actions.mean(dim=0)
+
+        action_token_indexes = np.arange(attention_rollout_matrix.shape[1]-8, attention_rollout_matrix.shape[1]-1)
+
         # Entropy of the attention from actions to all inputs except actions
         entropy = -torch.sum(average_attention_from_actions_to_all_inputs_except_actions * torch.log(average_attention_from_actions_to_all_inputs_except_actions))
         print("Entropy:", entropy)
         print("Std:", average_attention_from_actions_to_all_inputs_except_actions.std())
-        #action_to_image_attention = attention_rollout_matrix[0,-8:-1, patches_start:patches_end]
-        #action_to_text_attention = attention_rollout_matrix[0,-8:-1, patches_start:patches_end]
-        #image_patches_attention = attention_rollout_matrix[:, patches_start:patches_end]
-        #patch_attention = image_patches_attention.reshape(-1, num_patches_h, num_patches_w)
-        #breakpoint()
+        patch_indexes = extract_image_patch_token_indices(image_token_position, total_patches)
+        text_token_indexes = extract_text_token_indices(attention_rollout_matrix.shape[1]-8, np.arange(patch_indexes[0], patch_indexes[-1]+1))
+        visualize_attention_over_image(attention_rollout_matrix, image, patch_indexes, action_token_indexes, title=action_prompt + "_" + object_prompt )
+
+        attention_from_each_action_to_text_tokens, average_attention_from_all_action_to_text= average_attention_rollout_from_tokens_to_tokens(attention_rollout_matrix, action_token_indexes, text_token_indexes)
+
+        visualize_attention_over_prompt(attention_from_each_action_to_text_tokens, average_attention_from_all_action_to_text.squeeze(), decoded_input_tokens,  title=action_prompt + "_" + object_prompt )
+        breakpoint()
         #print("Attention shape:", [att for att in attention_matrices])  # Print the shapes of attention matrices
 
 if __name__ == "__main__":
